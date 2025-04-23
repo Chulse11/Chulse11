@@ -1,0 +1,128 @@
+---
+title: "NYPD Historic Shooting Incidents"
+author: "Anonymous Student"
+date: "2025-04-09"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document on the NYPD Shooting Incident (Historic) found on the DATA.GOV website.
+
+### Getting the NYDP shooting data by loading the url
+```{r data}
+library(tidyverse)
+
+# Load the data
+url <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+nyc_data <- read.csv(url)
+```
+### We will now have to look at the data structure and decide what we can do to clean it up if necessary.
+```{r data-cleaning}
+# Preview structure
+str(nyc_data)
+
+# Preview the data
+summary(nyc_data)
+
+# Check column names
+colnames(nyc_data)
+
+# Convert date columns
+nyc_data$`OCCUR_DATE` <- as.Date(nyc_data$`OCCUR_DATE`, format = "%m/%d/%Y")
+
+# Convert categorical columns to factor
+nyc_data$`BORO` <- as.factor(nyc_data$`BORO`)
+nyc_data$`LOC_OF_OCCUR_DESC` <- as.factor(nyc_data$`LOC_OF_OCCUR_DESC`)
+nyc_data$`PERP_SEX` <- as.factor(nyc_data$`PERP_SEX`)
+nyc_data$`PERP_RACE` <- as.factor(nyc_data$`PERP_RACE`)
+nyc_data$`VIC_SEX` <- as.factor(nyc_data$`VIC_SEX`)
+nyc_data$`VIC_RACE` <- as.factor(nyc_data$`VIC_RACE`)
+nyc_data$`STATISTICAL_MURDER_FLAG` <- as.factor(nyc_data$`STATISTICAL_MURDER_FLAG`)
+
+```
+```{r data-cleaned}
+# Remove unnecessary columns
+nyc_clean <- nyc_data %>%
+  select(-c(`Latitude`, `Longitude`, `Lon_Lat`, `X_COORD_CD`, `Y_COORD_CD`))
+# Check cleaned data
+str(nyc_clean)
+# Summary of cleaned data
+summary(nyc_clean)
+```
+
+### Ways to handle missing data
+
+By observing our data, we can see where unknown or missing values are located. Common ways to handle situations like this are:
+
+1. We can remove rows with missing values, this may cause a loss of a lot of data if many rows have missing values.
+
+2. We can impute missing values, this will only work if we have sensible replacements and I wouldn't advise if you are not fully familiar with the database.
+
+3. Leave the missing values in, some functions can handle it smoothly and may even exclude it automatically.
+
+
+## Visualization of the data 
+
+```{r borough-plot,warning=FALSE}
+library(ggplot2)
+
+# Show how many incidents in each borough
+ggplot(nyc_clean, aes(x = BORO)) +
+  geom_bar(fill = "steelblue", width = 0.7) +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.3) +
+  theme_minimal() +
+  labs(title = "Number of Shootings by Borough", x = "Borough", y = "Number of Incidents")
+
+```
+The bar graph clearly shows that historically, Brooklyn and the Bronx are where majority of shooting incidents occur. The two boroughs combined for almost 70 percent of all shooting incidents that occurred in the city.
+
+```{r stacked-bar-plot}
+library(ggplot2)
+
+# Stacked bar plot for BORO vs VIC_SEX
+ggplot(nyc_clean, aes(x = BORO, fill = VIC_SEX)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(title = "Shootings by Borough and Victim's Gender", x = "Borough", y = "Number of Incidents") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+The stacked bar plot above shows that across all boroughs, the likelihood of the victim of a shooting incident being male is extremely high.25,790 of the victims are males, this is an astonishing 90 percent of all incidents. Further research into male involvement in gang affiliations or access to weapons could provide some insight for this.
+
+```{r logistic-regression,message=FALSE}
+# Load necessary library
+library(caret)
+# a logistic regression model
+# change the murder variable to a binomial
+nyc_clean$STATISTICAL_MURDER_FLAG <- as.factor(ifelse(nyc_clean$STATISTICAL_MURDER_FLAG == "true", 1, 0))
+fatal_model <- glm(STATISTICAL_MURDER_FLAG ~ BORO + VIC_SEX + VIC_RACE + PERP_SEX + PERP_RACE + OCCUR_DATE, 
+                   data = nyc_clean, 
+                   family = "binomial")
+
+# View the model summary
+#summary(fatal_model)
+
+# Predicted probabilities for each row in the data
+nyc_clean$pred_probs <- predict(fatal_model, type = "response")
+
+# Plot the predicted probabilities against one of the predictors (e.g., BORO)
+ggplot(nyc_clean, aes(x = BORO, y = pred_probs, fill = BORO)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Predicted Probability of Fatal Shooting by Borough", 
+       x = "Borough", y = "Predicted Probability") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+From the predicted probabilities, we can observe that the chances of the incident being fatal is fairly low, with all the boroughs showing around the 20 percent fatality rate.
+
+## Conclusion
+Looking at the historical data for NYC, it is observed that majority of the shooting incidents occurred in the Bronx and Brooklyn, however when looking at the chances of a fatal shooting occurring, all boroughs are approximately in the same probability range. Males are by far the gender most affected by these incidents, also observed across all boroughs. The biases from my analysis  would be that I am not familiar with the demographic, political and socio-economic factors that may be affecting the city. So any inference I can make will be strictly from a numerical standpoint. The biases in the data could be in the sample ( precincts reporting, neighborhoods with higher police activity), we could also have over representation of shootings involving police but a misrepresentation of shootings that occurred in lower profile areas.If a variable was available to show if persons involved were gang affiliated could give some insights as well. This being historical data may also reflect past prejudices/racial profiling that may be carried forward, especially in modeling.
+
